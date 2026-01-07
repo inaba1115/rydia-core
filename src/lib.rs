@@ -1,5 +1,6 @@
 pub mod delay;
 pub mod iir_filter;
+pub mod leak_dc;
 pub mod lfo;
 pub mod osc;
 pub mod ring_buffer;
@@ -10,6 +11,7 @@ use crate::delay::{
     AllpassL, AllpassN, AllpassS, CombL, CombN, CombS, DelayL, DelayN, DelayS, calc_fb,
 };
 use crate::iir_filter::Biquad;
+use crate::leak_dc::LeakDc;
 use crate::lfo::Lfo;
 use crate::osc::{SinOsc, WhiteNoise};
 use crate::ring_buffer::{RingBufferL, RingBufferN, RingBufferS};
@@ -28,6 +30,8 @@ fn rydia(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<AllpassL>()?;
 
     m.add_class::<Biquad>()?;
+
+    m.add_class::<LeakDc>()?;
 
     m.add_class::<Lfo>()?;
 
