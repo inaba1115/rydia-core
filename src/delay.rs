@@ -279,9 +279,9 @@ mod tests {
     fn test_delay_l_interpolates_smoothly() {
         let mut d = DelayL::new(1.0, 4.0);
 
-        let y0 = d.process(10.0, 2.5);
-        let y1 = d.process(11.0, 2.5);
-        let y2 = d.process(12.0, 2.5);
+        let y0 = d.process(10.0, 1.8);
+        let y1 = d.process(11.0, 1.8);
+        let y2 = d.process(12.0, 1.8);
 
         // 最初はゼロ
         approx(y0, 0.0, 1e-6);
