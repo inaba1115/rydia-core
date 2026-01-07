@@ -80,3 +80,6 @@ __marimo__/
 
 # wav
 *.wav
+
+# pyo3-stub-gen outputs
+*.pyi
