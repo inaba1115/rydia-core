@@ -33,6 +33,17 @@ def test_lfo_smoke():
     assert isinstance(y_qp, float)
 
 
+def test_white_noise_smoke():
+    """
+    Basic smoke test for WhiteNoise:
+    - object can be constructed
+    - process() returns a float
+    """
+    white = rydia.WhiteNoise()
+    y = white.process()
+    assert isinstance(y, float)
+
+
 def test_ring_buffer_smoke():
     """
     Basic smoke test for RingBufferS:
