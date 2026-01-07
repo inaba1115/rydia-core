@@ -3,7 +3,7 @@ use pyo3::prelude::*;
 
 /// Feedback coefficient used by SuperCollider Comb / Allpass
 #[pyfunction]
-pub fn calc_fb(delay: f32, decay: f32) -> f32 {
+fn calc_fb(delay: f32, decay: f32) -> f32 {
     // fb == 0.001 ** (delay / abs(decay)) * sign(decay)
     0.001_f32.powf(delay / decay.abs()) * decay.signum()
 }

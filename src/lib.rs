@@ -8,9 +8,7 @@ pub mod ring_buffer;
 
 use pyo3::prelude::*;
 
-use crate::delay::{
-    AllpassL, AllpassN, AllpassS, CombL, CombN, CombS, DelayL, DelayN, DelayS, calc_fb,
-};
+use crate::delay::{AllpassL, AllpassN, AllpassS, CombL, CombN, CombS, DelayL, DelayN, DelayS};
 use crate::iir_filter::Biquad;
 use crate::leak_dc::LeakDc;
 use crate::lfo::Lfo;
@@ -20,7 +18,6 @@ use crate::ring_buffer::{RingBufferL, RingBufferN, RingBufferS};
 
 #[pymodule]
 fn rydia(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(calc_fb, m)?)?;
     m.add_class::<DelayS>()?;
     m.add_class::<DelayN>()?;
     m.add_class::<DelayL>()?;
