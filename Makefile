@@ -18,6 +18,7 @@ PY_TEST_DIR := tests
 all: check
 check: lint test
 dev: develop
+pipeline: lint_rs test_rs develop lint_py test_py
 
 # ---------------------------------------------------------------------
 # Python
