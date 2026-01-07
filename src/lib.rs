@@ -3,6 +3,7 @@ pub mod iir_filter;
 pub mod leak_dc;
 pub mod lfo;
 pub mod osc;
+pub mod pan;
 pub mod ring_buffer;
 
 use pyo3::prelude::*;
@@ -14,6 +15,7 @@ use crate::iir_filter::Biquad;
 use crate::leak_dc::LeakDc;
 use crate::lfo::Lfo;
 use crate::osc::{SinOsc, WhiteNoise};
+use crate::pan::pan2;
 use crate::ring_buffer::{RingBufferL, RingBufferN, RingBufferS};
 
 #[pymodule]
@@ -37,6 +39,8 @@ fn rydia(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     m.add_class::<SinOsc>()?;
     m.add_class::<WhiteNoise>()?;
+
+    m.add_function(wrap_pyfunction!(pan2, m)?)?;
 
     m.add_class::<RingBufferS>()?;
     m.add_class::<RingBufferN>()?;
