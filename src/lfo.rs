@@ -176,33 +176,30 @@ mod tests {
     }
 
     #[test]
-    fn lfo_quarter_phase_is_offset_by_quarter_cycle() {
+    fn lfo_quarter_phase_matches_main_phase_advanced_by_quarter_period() {
         let freq = 1.0;
         let samples_per_period = (SR / freq) as usize;
         let quarter_period = samples_per_period / 4;
 
-        let mut lfo = Lfo::new(SR, 0); // sine
+        let mut lfo_main = Lfo::new(SR, 0); // sine
+        let mut lfo_advanced = Lfo::new(SR, 0); // sine
 
-        // main phase output
-        let (y0, _) = lfo.process(freq);
-
-        // 1/4周期進める
-        for _ in 0..(quarter_period - 1) {
-            lfo.process(freq);
+        // advanced 側を 1/4周期だけ先に進めておく
+        for _ in 0..quarter_period {
+            lfo_advanced.process(freq);
         }
 
-        let (_, y_qp) = lfo.process(freq);
+        // 同時刻で比較：
+        // main の quarter-phase 出力 ≈ advanced の main-phase 出力
+        for _ in 0..1000 {
+            let (_, y_qp) = lfo_main.process(freq);
+            let (y_adv, _) = lfo_advanced.process(freq);
 
-        // sin(0)
-        assert!(
-            (y0 - 0.0).abs() < 1e-6,
-            "initial main phase not near zero: {y0}"
-        );
-        // sin(pi/2 + pi/2)
-        assert!(
-            (y_qp - 0.0).abs() < 1e-2,
-            "after quarter phase not near 0.0: {y_qp}"
-        );
+            assert!(
+                (y_qp - y_adv).abs() < 1e-3,
+                "quarter-phase mismatch: y_qp={y_qp}, y_adv={y_adv}"
+            );
+        }
     }
 
     #[test]
