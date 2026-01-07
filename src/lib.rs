@@ -9,7 +9,7 @@ use pyo3::prelude::*;
 use crate::delay::{
     AllpassL, AllpassN, AllpassS, CombL, CombN, CombS, DelayL, DelayN, DelayS, calc_fb,
 };
-use crate::iir_filter::{Biquad, IirLpf1, IirLpf2};
+use crate::iir_filter::Biquad;
 use crate::lfo::Lfo;
 use crate::osc::{SinOsc, WhiteNoise};
 use crate::ring_buffer::{RingBufferL, RingBufferN, RingBufferS};
@@ -28,8 +28,6 @@ fn rydia(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<AllpassL>()?;
 
     m.add_class::<Biquad>()?;
-    m.add_class::<IirLpf1>()?;
-    m.add_class::<IirLpf2>()?;
 
     m.add_class::<Lfo>()?;
 

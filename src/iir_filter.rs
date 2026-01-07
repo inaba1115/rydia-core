@@ -1,155 +1,136 @@
 use pyo3::prelude::*;
-use std::f32::consts::TAU;
 
-// filter coefs
-pub const A0: usize = 0;
-pub const A1: usize = 1;
-pub const A2: usize = 2;
-pub const B1: usize = 3;
-pub const B2: usize = 4;
-pub const N_COEFS: usize = 5;
+/// A biquad filter executor (Transposed Direct Form II).
+///
+/// This type **does not** design filters. Provide already-normalized coefficients
+/// (e.g. RBJ cookbook coefficients where `a0 == 1.0`).
+///
+/// Difference equation (with `a0 == 1`):
+/// y[n] = b0 x[n] + b1 x[n-1] + b2 x[n-2] - a1 y[n-1] - a2 y[n-2]
+#[derive(Clone, Copy, Debug)]
+struct BiquadCoefs {
+    b0: f32,
+    b1: f32,
+    b2: f32,
+    a1: f32,
+    a2: f32,
+}
 
-// filter states
-pub const X_Z1: usize = 0;
-pub const X_Z2: usize = 1;
-pub const Y_Z1: usize = 2;
-pub const Y_Z2: usize = 3;
-pub const N_STATES: usize = 4;
+#[derive(Clone, Copy, Debug)]
+struct BiquadState {
+    z1: f32,
+    z2: f32,
+}
 
 #[pyclass]
 #[derive(Clone, Debug)]
 pub struct Biquad {
-    #[pyo3(get, set)]
-    pub coefs: Vec<f32>,
-
-    #[pyo3(get, set)]
-    pub states: Vec<f32>,
+    coefs: BiquadCoefs,
+    state: BiquadState,
 }
 
 #[pymethods]
 impl Biquad {
+    /// Create a biquad with already-normalized coefficients (a0 must be 1.0 in your design).
     #[new]
-    #[pyo3(signature = (coefs))]
-    pub fn new(coefs: Vec<f32>) -> Self {
-        Biquad {
-            coefs: coefs,
-            states: vec![0.0; N_STATES],
+    #[pyo3(signature = (b0, b1, b2, a1, a2))]
+    pub fn new(b0: f32, b1: f32, b2: f32, a1: f32, a2: f32) -> Self {
+        Self {
+            coefs: BiquadCoefs { b0, b1, b2, a1, a2 },
+            state: BiquadState { z1: 0.0, z2: 0.0 },
         }
     }
 
-    pub fn process(&mut self, xn: f32) -> f32 {
-        // TRANSPOSE CANONICAL
-        let yn = self.coefs[A0] * xn + self.states[X_Z1];
-        self.states[X_Z1] = self.coefs[A1] * xn - self.coefs[B1] * yn + self.states[X_Z2];
-        self.states[X_Z2] = self.coefs[A2] * xn - self.coefs[B2] * yn;
-        yn
+    /// Process one sample.
+    pub fn process(&mut self, x: f32) -> f32 {
+        // Transposed Direct Form II
+        let y = self.coefs.b0 * x + self.state.z1;
+        self.state.z1 = self.coefs.b1 * x - self.coefs.a1 * y + self.state.z2;
+        self.state.z2 = self.coefs.b2 * x - self.coefs.a2 * y;
+        y
+    }
+
+    /// Reset internal state to zero.
+    pub fn reset(&mut self) {
+        self.state = BiquadState { z1: 0.0, z2: 0.0 };
+    }
+
+    /// Update coefficients (already normalized; a0 must be 1.0).
+    ///
+    /// This keeps the API stable while allowing coefficient updates without reallocations.
+    pub fn set_coefs(&mut self, b0: f32, b1: f32, b2: f32, a1: f32, a2: f32) {
+        self.coefs = BiquadCoefs { b0, b1, b2, a1, a2 };
     }
 }
 
-#[pyclass]
-pub struct IirLpf1 {
-    #[pyo3(get, set)]
-    pub sample_rate: f32,
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    #[pyo3(get, set)]
-    pub biquad: Biquad,
+    fn approx(a: f32, b: f32, eps: f32) {
+        assert!(
+            (a - b).abs() <= eps,
+            "not approx equal: a={a}, b={b}, |a-b|={}",
+            (a - b).abs()
+        );
+    }
 
-    #[pyo3(get, set)]
-    pub fc: f32,
-}
-
-#[pymethods]
-impl IirLpf1 {
-    #[new]
-    #[pyo3(signature = (sample_rate))]
-    pub fn new(sample_rate: f32) -> Self {
-        let coefs = vec![0.0; N_COEFS];
-
-        IirLpf1 {
-            sample_rate: sample_rate,
-            biquad: Biquad::new(coefs),
-            fc: 0.0,
+    #[test]
+    fn biquad_identity_passthrough() {
+        // y = x
+        let mut bq = Biquad::new(1.0, 0.0, 0.0, 0.0, 0.0);
+        for i in 0..100 {
+            let x = (i as f32) * 0.01 - 0.5;
+            let y = bq.process(x);
+            approx(y, x, 1e-6);
         }
     }
 
-    fn update_coefs(&mut self) {
-        let theta_c = TAU * self.fc / self.sample_rate;
-        let gamma = theta_c.cos() / (1.0 + theta_c.sin());
-
-        let mut coefs: Vec<f32> = vec![0.0; N_COEFS];
-        coefs[A0] = (1.0 - gamma) / 2.0;
-        coefs[A1] = (1.0 - gamma) / 2.0;
-        coefs[B1] = -gamma;
-
-        self.biquad.coefs = coefs;
-    }
-
-    pub fn process(&mut self, xn: f32, fc: f32) -> f32 {
-        if fc != self.fc {
-            self.fc = fc;
-            self.update_coefs();
-        }
-
-        self.biquad.process(xn)
-    }
-}
-
-#[pyclass]
-pub struct IirLpf2 {
-    #[pyo3(get, set)]
-    pub sample_rate: f32,
-
-    #[pyo3(get, set)]
-    pub biquad: Biquad,
-
-    #[pyo3(get, set)]
-    pub fc: f32,
-
-    #[pyo3(get, set)]
-    pub q: f32,
-}
-
-#[pymethods]
-impl IirLpf2 {
-    #[new]
-    #[pyo3(signature = (sample_rate))]
-    pub fn new(sample_rate: f32) -> Self {
-        let coefs = vec![0.0; N_COEFS];
-
-        IirLpf2 {
-            sample_rate: sample_rate,
-            biquad: Biquad::new(coefs),
-            fc: 0.0,
-            q: 0.0,
+    #[test]
+    fn biquad_dc_stays_dc_for_identity() {
+        let mut bq = Biquad::new(1.0, 0.0, 0.0, 0.0, 0.0);
+        for _ in 0..100 {
+            let y = bq.process(1.0);
+            approx(y, 1.0, 1e-6);
         }
     }
 
-    fn update_coefs(&mut self) {
-        let theta_c = TAU * self.fc / self.sample_rate;
-        let d = 1.0 / self.q;
-        let beta_numerator = 1.0 - (d / 2.0) * theta_c.sin();
-        let beta_denominator = 1.0 + (d / 2.0) * theta_c.sin();
-        let beta = 0.5 * (beta_numerator / beta_denominator);
-        let gamma = (0.5 + beta) * theta_c.cos();
-        let alpha = (0.5 + beta - gamma) / 2.0;
+    #[test]
+    fn biquad_reset_clears_history() {
+        // Simple leaky integrator-ish IIR: y = x + 0.5*y[-1]
+        // In biquad form: y = 1*x - a1*y[-1], so a1 = -0.5
+        let mut bq = Biquad::new(1.0, 0.0, 0.0, -0.5, 0.0);
 
-        let mut coefs: Vec<f32> = vec![0.0; N_COEFS];
-        coefs[A0] = alpha;
-        coefs[A1] = 2.0 * alpha;
-        coefs[A2] = alpha;
-        coefs[B1] = -2.0 * gamma;
-        coefs[B2] = 2.0 * beta;
+        // Feed DC, should ramp up
+        let y1 = bq.process(1.0);
+        let y2 = bq.process(1.0);
+        assert!(y2 > y1);
 
-        self.biquad.coefs = coefs;
+        // Reset and check it starts over
+        bq.reset();
+        let y1b = bq.process(1.0);
+        approx(y1b, y1, 1e-6);
     }
 
-    pub fn process(&mut self, xn: f32, fc: f32, q: f32) -> f32 {
-        if fc != self.fc || q != self.q {
-            self.fc = fc;
-            self.q = q;
-            self.update_coefs();
+    #[test]
+    fn biquad_does_not_produce_nan_or_inf_in_simple_iir() {
+        let mut bq = Biquad::new(0.1, 0.1, 0.0, -0.8, 0.0);
+        for _ in 0..10_000 {
+            let y = bq.process(0.5);
+            assert!(y.is_finite(), "non-finite output: {y}");
         }
+    }
 
-        self.biquad.process(xn)
+    #[test]
+    fn biquad_set_coefs_changes_behavior() {
+        let mut bq = Biquad::new(1.0, 0.0, 0.0, 0.0, 0.0);
+        let y_id = bq.process(1.0);
+        approx(y_id, 1.0, 1e-6);
+
+        // Now make it a simple attenuator FIR: y = 0.5*x
+        bq.reset();
+        bq.set_coefs(0.5, 0.0, 0.0, 0.0, 0.0);
+        let y_att = bq.process(1.0);
+        approx(y_att, 0.5, 1e-6);
     }
 }
