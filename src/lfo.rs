@@ -88,3 +88,132 @@ impl Lfo {
         self.sample_rate
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SR: f32 = 48_000.0;
+
+    #[test]
+    fn lfo_output_is_bounded_for_all_waveforms() {
+        let freqs = [0.1, 1.0, 5.0, 10.0];
+
+        for waveform in 0..3 {
+            let mut lfo = Lfo::new(SR, waveform);
+
+            for &f in &freqs {
+                for _ in 0..10_000 {
+                    let (y, y_qp) = lfo.process(f);
+                    assert!(y >= -1.0 && y <= 1.0, "y out of range: {y}");
+                    assert!(y_qp >= -1.0 && y_qp <= 1.0, "y_qp out of range: {y_qp}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn lfo_phase_is_always_normalized() {
+        let mut lfo = Lfo::new(SR, 0);
+
+        for _ in 0..1_000 {
+            lfo.process(SR * 10.0); // 極端に高い周波数
+            assert!(lfo.phase >= 0.0 && lfo.phase < 1.0);
+            assert!(lfo.phase_qp >= 0.0 && lfo.phase_qp < 1.0);
+        }
+    }
+
+    #[test]
+    fn lfo_is_periodic_for_integer_period() {
+        let freq = 5.0;
+        let samples_per_period = (SR / freq) as usize;
+
+        let mut lfo = Lfo::new(SR, 0); // sine
+
+        let (y0, y0_qp) = lfo.process(freq);
+
+        // ちょうど1周期分進める
+        for _ in 0..(samples_per_period - 1) {
+            lfo.process(freq);
+        }
+
+        let (y1, y1_qp) = lfo.process(freq);
+
+        assert!(
+            (y0 - y1).abs() < 1e-4,
+            "main phase not periodic: y0={y0}, y1={y1}"
+        );
+        assert!(
+            (y0_qp - y1_qp).abs() < 1e-4,
+            "quarter phase not periodic: y0_qp={y0_qp}, y1_qp={y1_qp}"
+        );
+    }
+
+    #[test]
+    fn lfo_reset_restores_initial_phases() {
+        let mut lfo = Lfo::new(SR, 1); // triangle
+
+        // 一度進める
+        lfo.process(2.0);
+        assert!(lfo.phase != 0.0);
+        assert!(lfo.phase_qp != 0.25);
+
+        // reset
+        lfo.reset();
+
+        assert!(
+            (lfo.phase - 0.0).abs() < f32::EPSILON,
+            "phase not reset: {}",
+            lfo.phase
+        );
+        assert!(
+            (lfo.phase_qp - 0.25).abs() < f32::EPSILON,
+            "quarter phase not reset: {}",
+            lfo.phase_qp
+        );
+    }
+
+    #[test]
+    fn lfo_quarter_phase_is_offset_by_quarter_cycle() {
+        let freq = 1.0;
+        let samples_per_period = (SR / freq) as usize;
+        let quarter_period = samples_per_period / 4;
+
+        let mut lfo = Lfo::new(SR, 0); // sine
+
+        // main phase output
+        let (y0, _) = lfo.process(freq);
+
+        // 1/4周期進める
+        for _ in 0..(quarter_period - 1) {
+            lfo.process(freq);
+        }
+
+        let (_, y_qp) = lfo.process(freq);
+
+        // sin(0) vs sin(pi/2) ≈ 1
+        assert!(
+            (y0 - 0.0).abs() < 1e-6,
+            "initial main phase not near zero: {y0}"
+        );
+        assert!(
+            (y_qp - 1.0).abs() < 1e-2,
+            "quarter phase not near +1.0: {y_qp}"
+        );
+    }
+
+    #[test]
+    fn lfo_does_not_produce_nan_or_inf() {
+        let mut lfo = Lfo::new(SR, 0);
+
+        let freqs = [0.0, 0.1, 1.0, 10.0, SR, SR * 10.0];
+
+        for &f in &freqs {
+            for _ in 0..100 {
+                let (y, y_qp) = lfo.process(f);
+                assert!(y.is_finite(), "non-finite y: {y}");
+                assert!(y_qp.is_finite(), "non-finite y_qp: {y_qp}");
+            }
+        }
+    }
+}
