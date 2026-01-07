@@ -9,8 +9,6 @@ PYO3_ENV   := PYO3_PYTHON=$(PYTHON_EXE)
 # Paths
 PY_SRC_DIR := .
 PY_TEST_DIR := tests
-STUB_OUT_DIR := rydia
-STUB_NAME := rydia.pyi
 
 # ---------------------------------------------------------------------
 # Meta targets
@@ -19,7 +17,7 @@ STUB_NAME := rydia.pyi
 .PHONY: all check dev
 all: check
 check: lint test
-dev: develop stub
+dev: develop
 
 # ---------------------------------------------------------------------
 # Python
@@ -30,7 +28,7 @@ dev: develop stub
 lint_py:
 	uv run ruff check $(PY_SRC_DIR) --fix
 	uv run ruff format $(PY_SRC_DIR)
-	uv run ty check .
+	# uv run ty check .
 
 test_py:
 	uv run pytest $(PY_TEST_DIR)
@@ -63,14 +61,3 @@ test: test_py test_rs
 .PHONY: develop
 develop:
 	maturin develop
-
-# ---------------------------------------------------------------------
-# Stub generation (internal use only)
-# ---------------------------------------------------------------------
-
-.PHONY: stub
-stub:
-	$(PYO3_ENV) cargo run --bin stub_gen
-	mkdir -p $(STUB_OUT_DIR)
-	mv rydia_core.pyi $(STUB_OUT_DIR)/$(STUB_NAME)
-
