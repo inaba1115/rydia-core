@@ -103,9 +103,13 @@ mod tests {
         let mut osc = SinOsc::new(SR, 0.0);
 
         let y0 = osc.process(freq);
-        for _ in 0..samples_per_period {
+
+        // Advance phase by exactly one period
+        for _ in 0..(samples_per_period - 1) {
             osc.process(freq);
         }
+
+        // This output should match the initial phase (mod 1.0)
         let y1 = osc.process(freq);
 
         // 位相周期性（誤差許容）
