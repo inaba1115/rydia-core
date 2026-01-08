@@ -1,13 +1,26 @@
 use crate::ring_buffer::{RingBufferL, RingBufferN, RingBufferS};
 use pyo3::prelude::*;
 
-/// Feedback coefficient used by SuperCollider Comb / Allpass
+/// Compute the feedback coefficient used by SuperCollider-style
+/// comb and allpass filters.
+///
+/// Formula:
+///
+/// ```text
+/// fb = 0.001 ** (delay / abs(decay)) * sign(decay)
+/// ```
+///
+/// - Larger absolute decay values result in feedback closer to 1.0
+/// - The sign of `decay` determines the polarity
 #[pyfunction]
 fn calc_fb(delay: f32, decay: f32) -> f32 {
-    // fb == 0.001 ** (delay / abs(decay)) * sign(decay)
     0.001_f32.powf(delay / decay.abs()) * decay.signum()
 }
 
+/// Integer-sample delay line.
+///
+/// This delay operates on discrete sample offsets only.
+/// Fractional delays are not supported.
 #[pyclass]
 #[derive(Clone, Debug)]
 pub struct DelayS {
@@ -16,6 +29,9 @@ pub struct DelayS {
 
 #[pymethods]
 impl DelayS {
+    /// Create a new integer-sample delay line.
+    ///
+    /// `max_delay_samp` specifies the maximum supported delay in samples.
     #[new]
     pub fn new(max_delay_samp: usize) -> Self {
         Self {
@@ -23,6 +39,7 @@ impl DelayS {
         }
     }
 
+    /// Process one input sample and return the delayed output.
     pub fn process(&mut self, xn: f32, delay_samp: usize) -> f32 {
         let yn = self.buf.read(delay_samp);
         self.buf.write(xn);
@@ -30,6 +47,9 @@ impl DelayS {
     }
 }
 
+/// Time-based delay line without interpolation.
+///
+/// Fractional delay times are truncated to integer samples.
 #[pyclass]
 #[derive(Clone, Debug)]
 pub struct DelayN {
@@ -38,6 +58,7 @@ pub struct DelayN {
 
 #[pymethods]
 impl DelayN {
+    /// Create a new time-based delay line.
     #[new]
     pub fn new(sample_rate: f32, max_delay_sec: f32) -> Self {
         Self {
@@ -45,6 +66,7 @@ impl DelayN {
         }
     }
 
+    /// Process one input sample with a time-based delay.
     pub fn process(&mut self, xn: f32, delay_sec: f32) -> f32 {
         let yn = self.buf.read(delay_sec);
         self.buf.write(xn);
@@ -52,6 +74,9 @@ impl DelayN {
     }
 }
 
+/// Time-based delay line with linear interpolation.
+///
+/// Fractional delays are handled smoothly via linear interpolation.
 #[pyclass]
 #[derive(Clone, Debug)]
 pub struct DelayL {
@@ -60,6 +85,7 @@ pub struct DelayL {
 
 #[pymethods]
 impl DelayL {
+    /// Create a new interpolating delay line.
     #[new]
     pub fn new(sample_rate: f32, max_delay_sec: f32) -> Self {
         Self {
@@ -67,6 +93,7 @@ impl DelayL {
         }
     }
 
+    /// Process one input sample with a fractional delay.
     pub fn process(&mut self, xn: f32, delay_sec: f32) -> f32 {
         let yn = self.buf.read(delay_sec);
         self.buf.write(xn);
@@ -74,6 +101,10 @@ impl DelayL {
     }
 }
 
+/// Integer-sample comb filter.
+///
+/// This is a feedback delay line using a SuperCollider-style
+/// decay parameter.
 #[pyclass]
 #[derive(Clone, Debug)]
 pub struct CombS {
@@ -82,6 +113,7 @@ pub struct CombS {
 
 #[pymethods]
 impl CombS {
+    /// Create a new integer-sample comb filter.
     #[new]
     pub fn new(max_delay_samp: usize) -> Self {
         Self {
@@ -89,6 +121,7 @@ impl CombS {
         }
     }
 
+    /// Process one sample through the comb filter.
     pub fn process(&mut self, xn: f32, delay_samp: usize, decay_samp: usize) -> f32 {
         let yn = self.buf.read(delay_samp);
         let fb = calc_fb(delay_samp as f32, decay_samp as f32);
@@ -97,6 +130,7 @@ impl CombS {
     }
 }
 
+/// Time-based comb filter without interpolation.
 #[pyclass]
 #[derive(Clone, Debug)]
 pub struct CombN {
@@ -105,6 +139,7 @@ pub struct CombN {
 
 #[pymethods]
 impl CombN {
+    /// Create a new time-based comb filter.
     #[new]
     pub fn new(sample_rate: f32, max_delay_sec: f32) -> Self {
         Self {
@@ -112,6 +147,7 @@ impl CombN {
         }
     }
 
+    /// Process one sample through the comb filter.
     pub fn process(&mut self, xn: f32, delay_sec: f32, decay_sec: f32) -> f32 {
         let yn = self.buf.read(delay_sec);
         let fb = calc_fb(delay_sec, decay_sec);
@@ -120,6 +156,7 @@ impl CombN {
     }
 }
 
+/// Time-based comb filter with linear interpolation.
 #[pyclass]
 #[derive(Clone, Debug)]
 pub struct CombL {
@@ -128,6 +165,7 @@ pub struct CombL {
 
 #[pymethods]
 impl CombL {
+    /// Create a new interpolating comb filter.
     #[new]
     pub fn new(sample_rate: f32, max_delay_sec: f32) -> Self {
         Self {
@@ -135,6 +173,7 @@ impl CombL {
         }
     }
 
+    /// Process one sample through the comb filter.
     pub fn process(&mut self, xn: f32, delay_sec: f32, decay_sec: f32) -> f32 {
         let yn = self.buf.read(delay_sec);
         let fb = calc_fb(delay_sec, decay_sec);
@@ -143,6 +182,7 @@ impl CombL {
     }
 }
 
+/// Integer-sample allpass filter.
 #[pyclass]
 #[derive(Clone, Debug)]
 pub struct AllpassS {
@@ -151,6 +191,7 @@ pub struct AllpassS {
 
 #[pymethods]
 impl AllpassS {
+    /// Create a new integer-sample allpass filter.
     #[new]
     pub fn new(max_delay_samp: usize) -> Self {
         Self {
@@ -158,6 +199,7 @@ impl AllpassS {
         }
     }
 
+    /// Process one sample through the allpass filter.
     pub fn process(&mut self, xn: f32, delay_samp: usize, decay_samp: usize) -> f32 {
         let k = calc_fb(delay_samp as f32, decay_samp as f32);
         let s_delay = self.buf.read(delay_samp);
@@ -170,6 +212,7 @@ impl AllpassS {
     }
 }
 
+/// Time-based allpass filter without interpolation.
 #[pyclass]
 #[derive(Clone, Debug)]
 pub struct AllpassN {
@@ -178,6 +221,7 @@ pub struct AllpassN {
 
 #[pymethods]
 impl AllpassN {
+    /// Create a new time-based allpass filter.
     #[new]
     pub fn new(sample_rate: f32, max_delay_sec: f32) -> Self {
         Self {
@@ -185,6 +229,7 @@ impl AllpassN {
         }
     }
 
+    /// Process one sample through the allpass filter.
     pub fn process(&mut self, xn: f32, delay_sec: f32, decay_sec: f32) -> f32 {
         let k = calc_fb(delay_sec, decay_sec);
         let s_delay = self.buf.read(delay_sec);
@@ -197,6 +242,7 @@ impl AllpassN {
     }
 }
 
+/// Time-based allpass filter with linear interpolation.
 #[pyclass]
 #[derive(Clone, Debug)]
 pub struct AllpassL {
@@ -205,6 +251,7 @@ pub struct AllpassL {
 
 #[pymethods]
 impl AllpassL {
+    /// Create a new interpolating allpass filter.
     #[new]
     pub fn new(sample_rate: f32, max_delay_sec: f32) -> Self {
         Self {
@@ -212,6 +259,7 @@ impl AllpassL {
         }
     }
 
+    /// Process one sample through the allpass filter.
     pub fn process(&mut self, xn: f32, delay_sec: f32, decay_sec: f32) -> f32 {
         let k = calc_fb(delay_sec, decay_sec);
         let s_delay = self.buf.read(delay_sec);
@@ -231,7 +279,7 @@ mod tests {
     fn approx(a: f32, b: f32, eps: f32) {
         assert!(
             (a - b).abs() <= eps,
-            "not approx equal: a={a}, b={b}, |a-b|={}",
+            "not approximately equal: a={a}, b={b}, |a-b|={}",
             (a - b).abs()
         );
     }
@@ -244,7 +292,7 @@ mod tests {
         let fb_mid = calc_fb(delay, 100.0);
         let fb_long = calc_fb(delay, 1000.0);
 
-        // decay が長いほどフィードバックは 1 に近づく
+        // Longer decay times produce feedback closer to 1.0
         assert!(fb_short < fb_mid);
         assert!(fb_mid < fb_long);
         assert!(fb_long < 1.0);
@@ -254,11 +302,11 @@ mod tests {
     fn test_delay_s_basic_behavior() {
         let mut d = DelayS::new(4);
 
-        // 最初は必ず 0 が出る
+        // Initial outputs must be zero
         approx(d.process(10.0, 2), 0.0, 1e-6);
         approx(d.process(11.0, 2), 0.0, 1e-6);
 
-        // delay 分遅れて入力が出てくる
+        // Input appears after the specified delay
         approx(d.process(12.0, 2), 10.0, 1e-6);
         approx(d.process(13.0, 2), 11.0, 1e-6);
     }
@@ -270,7 +318,7 @@ mod tests {
         approx(d.process(10.0, 2.1), 0.0, 1e-6);
         approx(d.process(11.0, 2.1), 0.0, 1e-6);
 
-        // floor(delay_sec * sr) が使われる
+        // floor(delay_sec * sample_rate) is used
         approx(d.process(12.0, 2.1), 10.0, 1e-6);
         approx(d.process(13.0, 2.1), 11.0, 1e-6);
     }
@@ -283,10 +331,10 @@ mod tests {
         let y1 = d.process(11.0, 1.8);
         let y2 = d.process(12.0, 1.8);
 
-        // 最初はゼロ
+        // First output must be zero
         approx(y0, 0.0, 1e-6);
 
-        // 補間された値が徐々に立ち上がる
+        // Interpolated output rises smoothly
         assert!(y1 > 0.0);
         assert!(y2 > y1);
     }
@@ -295,14 +343,14 @@ mod tests {
     fn test_comb_s_energy_builds_up() {
         let mut c = CombS::new(4);
 
-        let mut y_prev = 0.0;
+        let mut prev = 0.0;
         for i in 0..10 {
             let y = c.process(1.0, 2, 10);
             if i > 2 {
-                // フィードバックによりエネルギーが蓄積
-                assert!(y >= y_prev);
+                // Feedback causes energy accumulation
+                assert!(y >= prev);
             }
-            y_prev = y;
+            prev = y;
         }
     }
 
@@ -321,15 +369,15 @@ mod tests {
     }
 
     #[test]
-    fn test_allpass_preserves_signal_energy_trend() {
+    fn test_allpass_preserves_energy_distribution() {
         let mut ap = AllpassL::new(1.0, 4.0);
 
-        // 単位インパルス
+        // Unit impulse
         let y0 = ap.process(1.0, 2.0, 10.0);
         let y1 = ap.process(0.0, 2.0, 10.0);
         let y2 = ap.process(0.0, 2.0, 10.0);
 
-        // allpass なのでエネルギーは分散するが消えない
+        // Allpass redistributes energy but does not remove it
         assert!(y0.abs() > 0.0);
         assert!(y1.abs() > 0.0 || y2.abs() > 0.0);
     }
