@@ -103,10 +103,13 @@ impl WhiteNoise {
     ///
     /// The internal RNG is seeded from the operating system.
     #[new]
-    pub fn new() -> Self {
-        Self {
-            rng: SmallRng::from_os_rng(),
-        }
+    #[pyo3(signature = (seed = None))]
+    pub fn new(seed: Option<u64>) -> Self {
+        let rng = match seed {
+            Some(s) => SmallRng::seed_from_u64(s),
+            None => SmallRng::from_os_rng(),
+        };
+        Self { rng }
     }
 
     /// Generate one white noise sample.
@@ -114,7 +117,7 @@ impl WhiteNoise {
     /// # Returns
     /// A random value uniformly distributed in [-1.0, 1.0].
     pub fn process(&mut self) -> f32 {
-        self.rng.random_range(-1.0..=1.0)
+        self.rng.random_range(-1.0..1.0)
     }
 }
 
@@ -208,7 +211,7 @@ mod tests {
 
     #[test]
     fn white_noise_is_bounded_and_mean_is_near_zero() {
-        let mut noise = WhiteNoise::new();
+        let mut noise = WhiteNoise::new(None);
 
         let mut sum = 0.0;
         let n = 100_000;
@@ -221,5 +224,15 @@ mod tests {
 
         let mean = sum / n as f32;
         assert!(mean.abs() < 0.02, "noise mean too far from zero: {mean}");
+    }
+
+    #[test]
+    fn white_noise_is_reproducible_with_seed() {
+        let mut a = WhiteNoise::new(Some(123));
+        let mut b = WhiteNoise::new(Some(123));
+
+        for _ in 0..100 {
+            assert_eq!(a.process(), b.process());
+        }
     }
 }
