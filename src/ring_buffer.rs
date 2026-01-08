@@ -1,16 +1,38 @@
 use pyo3::prelude::*;
 
+/// Return the smallest power-of-two size greater than or equal to `n`.
+///
+/// This is used to ensure that ring buffer sizes are powers of two,
+/// allowing wrap-around to be implemented efficiently using bit masking.
+///
+/// - If `n == 0`, this returns `1`.
 fn ceil_to_pow2_usize(n: usize) -> usize {
     n.max(1).next_power_of_two()
 }
 
+/// Linear interpolation between two samples.
+///
+/// `t` is expected to be in the range `[0.0, 1.0]`.
+///
+/// - `t = 0.0` → returns `x1`
+/// - `t = 1.0` → returns `x2`
 fn do_linear_interp(x1: f32, x2: f32, t: f32) -> f32 {
     t * x2 + (1.0 - t) * x1
 }
 
+/// Ring buffer with integer-sample delay access.
+///
+/// This buffer is optimized for integer delays and uses a power-of-two
+/// internal buffer size with bit masking for wrap-around.
+///
+/// Typical use cases:
+/// - Integer-sample delay lines
+/// - Comb filters
+/// - Feedback delay networks
 #[pyclass]
 #[derive(Clone, Debug)]
 pub struct RingBufferS {
+    /// Maximum delay in samples (requested by the user).
     #[pyo3(get)]
     max_delay_samp: usize,
 
@@ -21,6 +43,9 @@ pub struct RingBufferS {
 
 #[pymethods]
 impl RingBufferS {
+    /// Create a ring buffer with a given maximum delay in samples.
+    ///
+    /// The internal buffer size is rounded up to the next power of two.
     #[new]
     #[pyo3(signature = (max_delay_samp))]
     pub fn new(max_delay_samp: usize) -> Self {
@@ -36,17 +61,31 @@ impl RingBufferS {
         }
     }
 
+    /// Read a sample delayed by `delay_samp` samples.
+    ///
+    /// No bounds checking is performed; delays larger than the internal
+    /// buffer size will wrap around cyclically.
     pub fn read(&self, delay_samp: usize) -> f32 {
         let read_index = (self.write_index.wrapping_sub(delay_samp)) & self.wrap_mask;
         self.buf[read_index]
     }
 
+    /// Write a new sample into the buffer.
     pub fn write(&mut self, xn: f32) {
         self.buf[self.write_index] = xn;
         self.write_index = (self.write_index + 1) & self.wrap_mask;
     }
 }
 
+/// Ring buffer with delay specified in seconds (no interpolation).
+///
+/// The delay time is converted to samples using:
+///
+/// ```text
+/// delay_samples = floor(sample_rate * delay_sec)
+/// ```
+///
+/// Fractional delays are truncated.
 #[pyclass]
 #[derive(Clone, Debug)]
 pub struct RingBufferN {
@@ -63,6 +102,7 @@ pub struct RingBufferN {
 
 #[pymethods]
 impl RingBufferN {
+    /// Create a ring buffer with delay specified in seconds.
     #[new]
     #[pyo3(signature = (sample_rate, max_delay_sec))]
     pub fn new(sample_rate: f32, max_delay_sec: f32) -> Self {
@@ -83,18 +123,28 @@ impl RingBufferN {
         }
     }
 
+    /// Read a delayed sample (fractional part is truncated).
     pub fn read(&self, delay_sec: f32) -> f32 {
         let delay_samp = (self.sample_rate * delay_sec).floor() as usize;
         let read_index = (self.write_index.wrapping_sub(delay_samp)) & self.wrap_mask;
         self.buf[read_index]
     }
 
+    /// Write a new sample into the buffer.
     pub fn write(&mut self, xn: f32) {
         self.buf[self.write_index] = xn;
         self.write_index = (self.write_index + 1) & self.wrap_mask;
     }
 }
 
+/// Ring buffer with fractional-delay support using linear interpolation.
+///
+/// This is suitable for:
+/// - Modulated delays
+/// - Chorus / flanger effects
+/// - Fractional-delay allpass structures
+///
+/// Linear interpolation is used between adjacent samples.
 #[pyclass]
 #[derive(Clone, Debug)]
 pub struct RingBufferL {
@@ -111,6 +161,7 @@ pub struct RingBufferL {
 
 #[pymethods]
 impl RingBufferL {
+    /// Create a fractional-delay ring buffer.
     #[new]
     #[pyo3(signature = (sample_rate, max_delay_sec))]
     pub fn new(sample_rate: f32, max_delay_sec: f32) -> Self {
@@ -131,6 +182,7 @@ impl RingBufferL {
         }
     }
 
+    /// Read a delayed sample using linear interpolation.
     pub fn read(&self, delay_sec: f32) -> f32 {
         let delay_samples_f = self.sample_rate * delay_sec;
         let delay_samp = delay_samples_f.floor() as usize;
@@ -145,6 +197,7 @@ impl RingBufferL {
         do_linear_interp(x1, x2, frac)
     }
 
+    /// Write a new sample into the buffer.
     pub fn write(&mut self, xn: f32) {
         self.buf[self.write_index] = xn;
         self.write_index = (self.write_index + 1) & self.wrap_mask;
@@ -190,7 +243,6 @@ mod tests {
             rb.write(i as f32);
         }
 
-        // 直近の履歴を読む（内部バッファ配置には依存しない）
         approx_eq(rb.read(1), 15.0, 1e-6);
         approx_eq(rb.read(2), 14.0, 1e-6);
         approx_eq(rb.read(3), 13.0, 1e-6);
@@ -204,7 +256,6 @@ mod tests {
             rb.write(i as f32);
         }
 
-        // delay_sec は floor でサンプルに落とす
         approx_eq(rb.read(1.0), 15.0, 1e-6);
         approx_eq(rb.read(1.1), 15.0, 1e-6);
         approx_eq(rb.read(1.9), 15.0, 1e-6);
