@@ -4,6 +4,23 @@ use std::f32::consts::TAU;
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 
+/// A simple phase-accumulating sine oscillator.
+///
+/// This oscillator generates a continuous sine waveform
+/// using normalized phase accumulation.
+///
+/// Characteristics:
+/// - Audio-rate oscillator
+/// - Stateless API with internal phase state
+/// - Deterministic and reproducible given the same inputs
+///
+/// Phase model:
+/// - Phase is normalized to the range [0, 1)
+/// - Output is computed as `sin(phase * TAU)`
+///
+/// Notes:
+/// - No band-limiting is applied
+/// - High frequencies may produce aliasing
 #[pyclass]
 pub struct SinOsc {
     sample_rate: f32,
@@ -12,6 +29,11 @@ pub struct SinOsc {
 
 #[pymethods]
 impl SinOsc {
+    /// Create a new sine oscillator.
+    ///
+    /// # Parameters
+    /// - `sample_rate`: sampling rate in Hz (must be positive)
+    /// - `phase`: initial phase in the range [0, 1)
     #[new]
     #[pyo3(signature = (sample_rate, phase = 0.0))]
     pub fn new(sample_rate: f32, phase: f32) -> Self {
@@ -19,33 +41,57 @@ impl SinOsc {
         Self { sample_rate, phase }
     }
 
+    /// Process one sample of the oscillator.
+    ///
+    /// # Parameters
+    /// - `frequency`: oscillator frequency in Hz
+    ///
+    /// # Returns
+    /// The current sine output sample.
     pub fn process(&mut self, frequency: f32) -> f32 {
-        // output at current phase
+        // Output at current phase
         let y = (self.phase * TAU).sin();
 
-        // advance phase
+        // Advance and wrap phase
         self.phase += frequency / self.sample_rate;
         self.phase -= self.phase.floor();
 
         y
     }
 
-    /// Reset phase to 0.0
+    /// Reset the internal phase to zero.
+    ///
+    /// After reset, the next output will be `sin(0) = 0`.
     pub fn reset(&mut self) {
         self.phase = 0.0;
     }
 
+    /// Get the current sample rate.
     #[getter]
     fn sample_rate(&self) -> f32 {
         self.sample_rate
     }
 
+    /// Get the current normalized phase.
     #[getter]
     fn phase(&self) -> f32 {
         self.phase
     }
 }
 
+/// White noise signal generator.
+///
+/// This generator produces independent, uniformly distributed
+/// random samples in the range [-1.0, 1.0].
+///
+/// Characteristics:
+/// - Stateless from the user's perspective
+/// - Internally uses a fast, small RNG
+/// - Suitable for noise sources, modulation, and testing
+///
+/// Notes:
+/// - The distribution is uniform, not Gaussian
+/// - The RNG is seeded from the operating system
 #[pyclass]
 pub struct WhiteNoise {
     rng: SmallRng,
@@ -53,6 +99,9 @@ pub struct WhiteNoise {
 
 #[pymethods]
 impl WhiteNoise {
+    /// Create a new white noise generator.
+    ///
+    /// The internal RNG is seeded from the operating system.
     #[new]
     pub fn new() -> Self {
         Self {
@@ -60,6 +109,10 @@ impl WhiteNoise {
         }
     }
 
+    /// Generate one white noise sample.
+    ///
+    /// # Returns
+    /// A random value uniformly distributed in [-1.0, 1.0].
     pub fn process(&mut self) -> f32 {
         self.rng.random_range(-1.0..=1.0)
     }
@@ -84,7 +137,7 @@ mod tests {
     fn sinosc_phase_is_always_normalized() {
         let mut osc = SinOsc::new(SR, 0.0);
 
-        // 極端な周波数でも破綻しないこと
+        // Extremely high frequencies should not break phase normalization
         for _ in 0..1_000 {
             osc.process(SR * 10.0);
             assert!(
@@ -104,15 +157,14 @@ mod tests {
 
         let y0 = osc.process(freq);
 
-        // Advance phase by exactly one period
+        // Advance exactly one full period
         for _ in 0..(samples_per_period - 1) {
             osc.process(freq);
         }
 
-        // This output should match the initial phase (mod 1.0)
         let y1 = osc.process(freq);
 
-        // 位相周期性（誤差許容）
+        // Periodicity (with numerical tolerance)
         assert!(
             (y0 - y1).abs() < 1e-4,
             "periodicity broken: y0={y0}, y1={y1}"
@@ -123,11 +175,11 @@ mod tests {
     fn sinosc_reset_sets_phase_to_zero() {
         let mut osc = SinOsc::new(SR, 0.3);
 
-        // 一度進める
+        // Advance once
         osc.process(440.0);
         assert!(osc.phase != 0.0);
 
-        // reset
+        // Reset
         osc.reset();
         assert!(
             (osc.phase - 0.0).abs() < f32::EPSILON,
@@ -135,7 +187,7 @@ mod tests {
             osc.phase
         );
 
-        // reset 後の最初の出力は sin(0) = 0
+        // First output after reset must be sin(0) = 0
         let y = osc.process(440.0);
         assert!(y.abs() < 1e-6, "output after reset not zero: {y}");
     }
