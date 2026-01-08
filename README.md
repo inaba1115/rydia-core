@@ -53,6 +53,8 @@ for i in range(10):
 
 This applies a fractional delay using linear interpolation.
 
+For more advanced usage and complete examples, see the `examples/` directory.
+
 ---
 
 ## Provided UGens
