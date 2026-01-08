@@ -1,19 +1,29 @@
 use pyo3::prelude::*;
 use std::f32::consts::PI;
 
+/// Constants used for the parabolic sine approximation.
+///
+/// This approximation is commonly used in audio DSP to
+/// generate sine-like waveforms efficiently.
 const B: f32 = 4.0 / PI;
 const C: f32 = -4.0 / (PI * PI);
 const P: f32 = 0.225;
 
+/// Fast parabolic sine approximation.
+///
+/// This function approximates `sin(x)` with low computational cost.
+/// The output may slightly exceed the range [-1.0, 1.0].
 fn parabolic_sine(x: f32) -> f32 {
     let y1 = B * x + C * x * x.abs();
     P * (y1 * y1.abs() - y1) + y1
 }
 
+/// Convert a unipolar phase value [0, 1) into bipolar range [-1, 1).
 fn unipolar_to_bipolar(x: f32) -> f32 {
     x * 2.0 - 1.0
 }
 
+/// Supported LFO waveform types.
 #[derive(Clone, Copy)]
 enum LfoWaveform {
     Sine,
@@ -31,6 +41,23 @@ impl From<usize> for LfoWaveform {
     }
 }
 
+/// Low-frequency oscillator (LFO).
+///
+/// This LFO produces a main output and a quarter-phase-shifted output.
+/// It is designed for modulation purposes rather than audio-rate synthesis.
+///
+/// Characteristics:
+/// - Stateless per-sample API (explicit state inside the object)
+/// - Deterministic phase accumulation
+/// - Multiple waveform types
+///
+/// Outputs:
+/// - Main phase output
+/// - Quarter-phase (90°) advanced output
+///
+/// Notes:
+/// - The sine waveform uses a fast approximation and may slightly exceed ±1.0
+/// - Phase is always normalized to [0, 1)
 #[pyclass]
 pub struct Lfo {
     sample_rate: f32,
@@ -41,6 +68,14 @@ pub struct Lfo {
 
 #[pymethods]
 impl Lfo {
+    /// Create a new LFO.
+    ///
+    /// # Parameters
+    /// - `sample_rate`: sampling rate in Hz (must be positive)
+    /// - `waveform`: waveform selector
+    ///     - 0: sine
+    ///     - 1: triangle
+    ///     - otherwise: saw
     #[new]
     #[pyo3(signature = (sample_rate, waveform = 0))]
     pub fn new(sample_rate: f32, waveform: usize) -> Self {
@@ -49,10 +84,19 @@ impl Lfo {
             sample_rate,
             waveform: waveform.into(),
             phase: 0.0,
-            phase_qp: 0.25,
+            phase_qp: 0.25, // quarter-cycle offset
         }
     }
 
+    /// Process one sample step of the LFO.
+    ///
+    /// # Parameters
+    /// - `frequency`: LFO frequency in Hz
+    ///
+    /// # Returns
+    /// A tuple `(y, y_qp)` where:
+    /// - `y` is the main phase output
+    /// - `y_qp` is the quarter-phase-shifted output
     pub fn process(&mut self, frequency: f32) -> (f32, f32) {
         let phase_inc = frequency / self.sample_rate;
 
@@ -69,6 +113,7 @@ impl Lfo {
             LfoWaveform::Saw => (tmp, tmp_qp),
         };
 
+        // Advance and normalize phases
         self.phase += phase_inc;
         self.phase -= self.phase.floor();
 
@@ -78,11 +123,17 @@ impl Lfo {
         (y, y_qp)
     }
 
+    /// Reset the internal phase state.
+    ///
+    /// After reset:
+    /// - main phase = 0.0
+    /// - quarter phase = 0.25
     pub fn reset(&mut self) {
         self.phase = 0.0;
         self.phase_qp = 0.25;
     }
 
+    /// Get the current sample rate.
     #[getter]
     fn sample_rate(&self) -> f32 {
         self.sample_rate
@@ -105,8 +156,7 @@ mod tests {
             for &f in &freqs {
                 for _ in 0..10_000 {
                     let (y, y_qp) = lfo.process(f);
-                    // LFO sine waveform is generated using a fast parabolic approximation
-                    // and may slightly exceed the range [-1.0, 1.0].
+                    // The parabolic sine approximation may slightly exceed [-1, 1].
                     assert!(y.abs() <= 1.01, "y out of range: {y}");
                     assert!(y_qp.abs() <= 1.01, "y_qp out of range: {y_qp}");
                 }
@@ -119,7 +169,7 @@ mod tests {
         let mut lfo = Lfo::new(SR, 0);
 
         for _ in 0..1_000 {
-            lfo.process(SR * 10.0); // 極端に高い周波数
+            lfo.process(SR * 10.0); // extremely high frequency
             assert!(lfo.phase >= 0.0 && lfo.phase < 1.0);
             assert!(lfo.phase_qp >= 0.0 && lfo.phase_qp < 1.0);
         }
@@ -134,7 +184,7 @@ mod tests {
 
         let (y0, y0_qp) = lfo.process(freq);
 
-        // ちょうど1周期分進める
+        // Advance exactly one full period
         for _ in 0..(samples_per_period - 1) {
             lfo.process(freq);
         }
@@ -155,12 +205,12 @@ mod tests {
     fn lfo_reset_restores_initial_phases() {
         let mut lfo = Lfo::new(SR, 1); // triangle
 
-        // 一度進める
+        // Advance the phase
         lfo.process(2.0);
         assert!(lfo.phase != 0.0);
         assert!(lfo.phase_qp != 0.25);
 
-        // reset
+        // Reset
         lfo.reset();
 
         assert!(
@@ -184,13 +234,12 @@ mod tests {
         let mut lfo_main = Lfo::new(SR, 0); // sine
         let mut lfo_advanced = Lfo::new(SR, 0); // sine
 
-        // advanced 側を 1/4周期だけ先に進めておく
+        // Advance the second LFO by exactly one quarter period
         for _ in 0..quarter_period {
             lfo_advanced.process(freq);
         }
 
-        // 同時刻で比較：
-        // main の quarter-phase 出力 ≈ advanced の main-phase 出力
+        // Compare outputs at the same logical time
         for _ in 0..1000 {
             let (_, y_qp) = lfo_main.process(freq);
             let (y_adv, _) = lfo_advanced.process(freq);
