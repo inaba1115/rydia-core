@@ -1,20 +1,68 @@
+"""
+FM synthesis example using rydia-core.
+
+This example demonstrates:
+- Sample-by-sample DSP processing
+- Frequency modulation using SinOsc
+- Offline (non-realtime) audio rendering in Python
+
+rydia-core is intentionally low-level: there is no signal graph or block processing.
+Each oscillator is advanced explicitly per sample.
+"""
+
 import numpy as np
-import sounddevice as sd  # type: ignore
+import soundfile as sf
 
 import rydia
 
-sr = 48000.0
-sec = 5.0
-car_freq = 456.0
-mod_freq = 321.0
-mod_index = 252.0
 
-y = np.zeros(int(sr * sec))
-car_osc = rydia.SinOsc(sr)
-mod_osc = rydia.SinOsc(sr)
+def main():
+    # ------------------------------------------------------------------
+    # Parameters
+    # ------------------------------------------------------------------
 
-for n in range(len(y)):
-    mod = mod_osc.process(mod_freq) * mod_index
-    y[n] = car_osc.process(car_freq + mod)
+    sample_rate = 48_000.0
+    duration_sec = 5.0
 
-sd.play(y, samplerate=sr, blocking=True)
+    carrier_freq = 440.0
+    modulator_freq = 220.0
+    modulation_index = 200.0
+
+    n_samples = int(sample_rate * duration_sec)
+
+    # ------------------------------------------------------------------
+    # DSP objects
+    # ------------------------------------------------------------------
+
+    carrier = rydia.SinOsc(sample_rate)
+    modulator = rydia.SinOsc(sample_rate)
+
+    # Output buffer
+    y = np.zeros(n_samples, dtype=np.float32)
+
+    # ------------------------------------------------------------------
+    # Sample-by-sample synthesis
+    # ------------------------------------------------------------------
+
+    for n in range(n_samples):
+        # Modulator output
+        mod = modulator.process(modulator_freq)
+
+        # Instantaneous frequency modulation
+        freq = carrier_freq + modulation_index * mod
+
+        # Carrier output
+        y[n] = carrier.process(freq)
+
+    # ------------------------------------------------------------------
+    # Normalize and write output
+    # ------------------------------------------------------------------
+
+    y /= np.max(np.abs(y) + 1e-12)
+
+    sf.write("fm_synthesis.wav", y, int(sample_rate))
+    print("Wrote fm_synthesis.wav")
+
+
+if __name__ == "__main__":
+    main()
