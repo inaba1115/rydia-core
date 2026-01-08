@@ -26,10 +26,8 @@ build-backend = "maturin"
 dev = [
     "numpy>=2.2.6",
     "pytest>=9.0.2",
-    "pytest-cov>=7.0.0",
     "ruff>=0.14.10",
-    "sounddevice>=0.5.3",
-    "ty>=0.0.9",
+    "soundfile>=0.13.1",
 ]
 
 [tool.ruff]
@@ -37,7 +35,7 @@ line-length = 120
 
 [tool.ruff.lint]
 extend-select = ["I", "RUF", "UP", "TID", "C", "SIM", "PTH"]
-extend-ignore = ["C901", "F401", "F403", "E722", "RUF007"]
+extend-ignore = ["C901", "F401", "F403", "E722", "RUF007", "E741"]
 
 [tool.pytest.ini_options]
 minversion = "9.0"
@@ -46,15 +44,3 @@ addopts = [
     "-ra",
     "--strict-markers",
 ]
-
-[tool.coverage.run]
-branch = true
-source = ["hyperscore"]
-omit = [
-    "*/__init__.py",
-]
-
-[tool.coverage.report]
-show_missing = true
-skip_covered = true
-precision = 2
