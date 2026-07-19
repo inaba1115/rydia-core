@@ -9,3 +9,7 @@ Initial public release.
 - Explicit state and sample-by-sample processing
 - Oscillators, noise, delay-based primitives, and basic filters
 - Experimental, research-oriented API
+
+## 0.2.0
+
+- Add rlib to crate-type so it can be used from Rust as well
